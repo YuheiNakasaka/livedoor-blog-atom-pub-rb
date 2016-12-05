@@ -1,7 +1,14 @@
 require "livedoor_blog_atom_pub/version"
 require 'wsse'
+require 'uri'
+require 'tempfile'
+require 'base64'
 
 module LivedoorBlogAtomPub
+  def self.root_path
+    File.dirname __dir__
+  end
+
   class Client
     SERVER_HOST = "livedoor.blogcms.jp"
     def initialize(username, api_key, blog_id: nil)
@@ -14,6 +21,29 @@ module LivedoorBlogAtomPub
       xml = generate_entry(title, content, categories: categories, draft_flag: draft_flag)
       http = Net::HTTP.start(SERVER_HOST)
       response = http.post("/atom/blog/#{@blog_id}/article", xml, {'X-WSSE' => WSSE::header(@username,  @api_key)})
+    end
+
+    # return image url as string
+    def upload_image(image_path: nil, image_url: nil)
+      if !image_path.nil? || !image_url.nil?
+        image = image_path || image_url
+        bin = read_image(image)
+        ext = get_image_extension(bin)
+
+        # use new AtomPub API
+        # it's only ssl version
+        https = Net::HTTP.new(SERVER_HOST, '443')
+        https.use_ssl = true
+        https.verify_mode = OpenSSL::SSL::VERIFY_NONE
+        req = Net::HTTP::Post.new("/atompub/#{@blog_id}/image")
+        req['Authorization'] = 'WSSE profile="UsernameToken"'
+        req['X-WSSE'] = WSSE::header(@username,  @api_key)
+        req['Content-Type'] = "image/#{ext}"
+        req.body = bin
+        response = https.request(req)
+        # parse the reponse of xml style and fetch an image url
+        url = response.body.match(/<content.+src="(.+)?"/)[1]
+      end
     end
 
     private
@@ -37,6 +67,42 @@ module LivedoorBlogAtomPub
       out.puts "    </app:control>"
       out.puts "</entry>"
       out.string
+    end
+
+    def read_image(image)
+      if uri?(image)
+        open(image).read
+      else
+        File.open(image).read
+      end
+    end
+
+    def uri?(target)
+      begin
+        uri = URI.parse(target)
+      rescue URI::InvalidURIError
+        return false
+      end
+      uri.scheme =~ /^http/
+    end
+
+    # get file extension from binary
+    # referenced from http://stackoverflow.com/a/16635245
+    def get_image_extension(binary)
+      png = Regexp.new("\x89PNG".force_encoding("binary"))
+      jpg = Regexp.new("\xff\xd8\xff\xe0\x00\x10JFIF".force_encoding("binary"))
+      jpg2 = Regexp.new("\xff\xd8\xff\xe1(.*){2}Exif".force_encoding("binary"))
+      # if image read with File.open, the binary is utf-8 from Ruby 2.0
+      case binary.force_encoding("binary")
+      when /^GIF8/
+        'gif'
+      when /^#{png}/
+        'png'
+      when /^#{jpg}/
+        'jpg'
+      when /^#{jpg2}/
+        'jpg'
+      end
     end
   end
 end

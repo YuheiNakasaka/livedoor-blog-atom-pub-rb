@@ -60,6 +60,22 @@ When username is different from blog id
 @client.post_entry('Title', 'Content', draft_flag: true)
 ```
 
+### Upload image
+
+Return a image url like  http://livedoor.blogimg.jp/example/imgs/0/a/abcdefg.jpg
+
+#### Set a url
+
+```ruby
+@client.upload_image(image_url: 'http://example.com/1.jpg')
+```
+
+#### Set a local file path
+
+```ruby
+@client.upload_image(image_path: '/src/image/1.jpg')
+```
+
 ## Development
 
 After checking out the repo, run `bin/setup` to install dependencies. Then, run `rake spec` to run the tests. You can also run `bin/console` for an interactive prompt that will allow you to experiment.
